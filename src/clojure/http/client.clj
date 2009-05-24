@@ -15,10 +15,15 @@ representation of text."
   [text]
   (URLEncoder/encode text "UTF-8"))
 
-(defn- encode-body-map
+(defn encode-body-map
   "Turns a map into a URL-encoded string suitable for a request body."
   [body]
-  (str-join "&" (map #(str-join "=" (map url-encode %)) body)))
+  (str-join "&"
+            (map (fn [m]
+                   (str-join "="
+                             (map #(url-encode (as-str %))
+                                  m)))
+                 body)))
 
 (defn- send-body
   [body connection headers]

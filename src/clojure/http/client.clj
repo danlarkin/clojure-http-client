@@ -11,19 +11,11 @@
 
 (defn url-encode
   "Wrapper around java.net.URLEncoder returning a (UTF-8) URL encoded
-representation of text."
-  [text]
-  (URLEncoder/encode text "UTF-8"))
-
-(defn encode-body-map
-  "Turns a map into a URL-encoded string suitable for a request body."
-  [body]
-  (str-join "&"
-            (map (fn [m]
-                   (str-join "="
-                             (map #(url-encode (as-str %))
-                                  m)))
-                 body)))
+representation of argument, either a string or map."
+  [arg]
+  (if (map? arg)
+    (str-join \& (map #(str-join \= (map url-encode %)) arg))
+    (URLEncoder/encode (as-str arg) "UTF-8")))
 
 (defn- send-body
   [body connection headers]
@@ -41,7 +33,7 @@ representation of text."
   (let [out (.getOutputStream connection)]
     (cond
       (string? body) (spit out body)
-      (map? body) (spit out (encode-body-map body))
+      (map? body) (spit out (url-encode body))
       (instance? InputStream body) (let [bytes (make-array Byte/TYPE 1000)]
                                      (loop [bytes-read (.read body bytes)]
                                        (when (pos? bytes-read)
@@ -71,22 +63,17 @@ or the error stream of connection, whichever is appropriate."
   "Returns a map of the response headers from connection."
   [connection]
   (let [hs (.getHeaderFields connection)]
-    (apply merge (map (fn [e] (when-let [k (key e)]
-                                {k (first (val e))}))
-                      hs))))
+    (into {} (for [[k v] hs :when k] [k (first v)]))))
 
 (defn- parse-cookies
   "Returns a map of cookies when given the Set-Cookie string sent
 by a server."
   [cookie-string]
   (when cookie-string
-    (apply merge
-           (map (fn [cookie]
-                  (apply hash-map
-                         (map (fn [c]
-                                (.trim c))
-                              (.split cookie "="))))
-                (.split cookie-string ";")))))
+    (into {}
+      (for [cookie (.split cookie-string ";")]
+        (let [keyval (map #(.trim %) (.split cookie "="))]
+          [(first keyval) (second keyval)])))))
 
 (defn- create-cookie-string
   "Returns a string suitable for sending to the server in the
